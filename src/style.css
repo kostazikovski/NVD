@@ -1,0 +1,28 @@
+:root {
+    --bs-primary: #3b82f6;
+    --bs-primary-rgb: 59, 130, 246;
+    --bs-link-color: #3b82f6;
+    --bs-link-color-rgb: 59, 130, 246;
+    --bs-link-hover-color: #60a5fa;
+    --bs-link-hover-color-rgb: 96, 165, 250;
+}
+
+html, body {
+    margin: 0; padding: 0; overflow: hidden;
+    width: 100%; height: 100%;
+}
+
+#renderCanvas { width: 100%; height: 100%; touch-action: none; display: block; }
+
+.car-card { cursor: pointer; transition: transform .12s ease, box-shadow .12s ease; }
+.car-card:hover { transform: translateY(-2px); }
+
+.overlay-center {
+    position: absolute; inset: 0;
+    align-items: center; justify-content: center;
+}
+
+@media (max-width: 1200px) {
+    #credit { max-width: 210px; font-size: .55rem; }
+    #topbar { font-size: .8rem; padding-left: .6rem; padding-right: .6rem; }
+}
