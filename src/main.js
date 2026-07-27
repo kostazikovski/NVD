@@ -107,13 +107,18 @@ Hud.onBackToMenu(goToMenu);
 
 async function startGame(carDef, track) {
   const canvas = document.getElementById("renderCanvas");
-  const engine = new Engine(canvas, true, { stencil: true }, true);
+  const engine = new Engine(canvas, true, { stencil: true }, false);
 
   const scene = new Scene(engine);
   scene.clearColor = new Color4(0.53, 0.8, 0.98, 1);
+  scene.skipPointerMovePicking = true;
 
-  const { path, startPoint, startTangent, checkpoints } = buildTrack(scene, track.points);
+  const trackResult = await buildTrack(scene, track.points);
+  const { path, startPoint, startTangent, checkpoints, shadowGenerator } = trackResult;
   const carMesh = await carDef.build(scene);
+  if (shadowGenerator) {
+    carMesh.getChildMeshes().forEach((childMesh) => shadowGenerator.addShadowCaster(childMesh, false));
+  }
 
   const startHeading = Math.atan2(startTangent.x, startTangent.z);
   carMesh.position = startPoint.clone();
@@ -139,6 +144,13 @@ async function startGame(carDef, track) {
 
   const carMaxSpeed = (carDef.topSpeed ?? CONFIG.MAX_SPEED * 10) / 10;
 
+  const CAM_DISTANCE = 11;
+  const CAM_HEIGHT = 6;
+  const CAM_LOOK_AHEAD = 6;
+  const CAM_LOOK_HEIGHT = 1;
+  const CAM_FOLLOW_RATE = 4.5;
+  let camHeading = startHeading;
+
   let physics = createPhysicsState(startPoint, startHeading, carMaxSpeed);
   let lap = 1;
   let lapStartTime = performance.now();
@@ -147,10 +159,12 @@ async function startGame(carDef, track) {
   let lapReady = false;
   let finished = false;
   let running = false;
+  let prevStartSigned = -1;
 
   function resetRace() {
     physics = createPhysicsState(startPoint, startHeading, carMaxSpeed);
     carMesh.rotation.y = startHeading;
+    camHeading = startHeading;
     lap = 1;
     lapStartTime = performance.now();
     bestLap = null;
@@ -158,6 +172,7 @@ async function startGame(carDef, track) {
     lapReady = false;
     finished = false;
     running = false;
+    prevStartSigned = -1;
     Hud.resetBest();
     Hud.hideFinish();
     Hud.playCountdown(() => {
@@ -199,6 +214,11 @@ async function startGame(carDef, track) {
       carMesh.position.copyFrom(physics.pos);
       carMesh.rotation.y = physics.heading;
 
+      const toStart = physics.pos.subtract(startPoint);
+      const startSigned = Vector3.Dot(toStart, startTangent);
+      const crossedStartLine =
+        prevStartSigned < 0 && startSigned >= 0 && toStart.length() < CONFIG.ROAD_WIDTH * 1.5;
+
       if (!lapReady) {
         const cpIndex = checkpoints[nextCheckpoint];
         const cpPos = path[cpIndex];
@@ -208,7 +228,7 @@ async function startGame(carDef, track) {
             lapReady = true;
           }
         }
-      } else if (Vector3.Distance(physics.pos, startPoint) < CONFIG.ROAD_WIDTH) {
+      } else if (crossedStartLine) {
         const now = performance.now();
         const lapTime = (now - lapStartTime) / 1000;
         if (bestLap === null || lapTime < bestLap) bestLap = lapTime;
@@ -224,6 +244,8 @@ async function startGame(carDef, track) {
         }
       }
 
+      prevStartSigned = startSigned;
+
       Hud.update({
         lap, totalLaps: CONFIG.TOTAL_LAPS,
         elapsed: (performance.now() - lapStartTime) / 1000,
@@ -232,10 +254,15 @@ async function startGame(carDef, track) {
       });
     }
 
-    const forward = new Vector3(Math.sin(physics.heading), 0, Math.cos(physics.heading));
-    const desiredPos = physics.pos.subtract(forward.scale(11)).add(new Vector3(0, 6, 0));
-    camera.position = Vector3.Lerp(camera.position, desiredPos, 0.08);
-    const lookTarget = physics.pos.add(forward.scale(6)).add(new Vector3(0, 1, 0));
+    let headingDelta = physics.heading - camHeading;
+    headingDelta = Math.atan2(Math.sin(headingDelta), Math.cos(headingDelta));
+    const followAmount = 1 - Math.exp(-CAM_FOLLOW_RATE * dt);
+    camHeading += headingDelta * followAmount;
+
+    const camForward = new Vector3(Math.sin(camHeading), 0, Math.cos(camHeading));
+    const desiredPos = physics.pos.subtract(camForward.scale(CAM_DISTANCE)).add(new Vector3(0, CAM_HEIGHT, 0));
+    camera.position = Vector3.Lerp(camera.position, desiredPos, followAmount);
+    const lookTarget = physics.pos.add(camForward.scale(CAM_LOOK_AHEAD)).add(new Vector3(0, CAM_LOOK_HEIGHT, 0));
     camera.setTarget(lookTarget);
   });
 

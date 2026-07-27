@@ -34,6 +34,10 @@ export const corvetteC8Car = {
 
     correction.rotation.y = MODEL_ROTATION_Y;
 
+    root.getChildMeshes().forEach((mesh) => {
+      if (mesh.material) mesh.material.freeze();
+    });
+
     return car;
   }
 };
